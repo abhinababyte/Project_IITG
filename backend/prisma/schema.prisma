@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  name          String
+  email         String    @unique
+  password_hash String
+  hostel        String
+  eco_coins     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  profile       Profile?
+  audits        Audit[]
+  pledges       Pledge[]
+}
+
+model Profile {
+  id              Int    @id @default(autoincrement())
+  userId          Int    @unique
+  defaultCommute  String
+  defaultDiet     String
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Audit {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  date           DateTime @default(now())
+  commuteMode    String
+  commuteDistance Float
+  acHours        Int
+  laptopHours    Int
+  dietType       String
+  recycling      Boolean
+  co2Saved       Float
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Pledge {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  category  String
+  action    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

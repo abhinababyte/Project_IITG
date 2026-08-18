@@ -5,31 +5,60 @@ const emit = defineEmits(['authenticated'])
 
 const authMode = ref('login') // 'login' or 'signup'
 const isLoading = ref(false)
+const errorMessage = ref('')
 
 const email = ref('')
 const password = ref('')
 const name = ref('')
-const registeredName = ref('') // Store the name temporarily for the prototype
+const hostel = ref('Kameng Hostel') // Default for signup
 
-const handleAuth = () => {
-  if (!email.value) return // Basic validation
+const hostels = [
+  'Kameng Hostel', 'Barak Hostel', 'Umiam Hostel', 
+  'Brahmaputra Hostel', 'Manas Hostel', 'Dihing Hostel'
+]
+
+const handleAuth = async () => {
+  if (!email.value || !password.value) return 
   
   isLoading.value = true
-  // Simulate network request for authentication
-  setTimeout(() => {
-    isLoading.value = false
+  errorMessage.value = ''
+  
+  const endpoint = authMode.value === 'signup' 
+    ? 'http://localhost:3000/api/auth/signup' 
+    : 'http://localhost:3000/api/auth/login'
     
+  const payload = authMode.value === 'signup'
+    ? { name: name.value, email: email.value, password: password.value, hostel: hostel.value }
+    : { email: email.value, password: password.value }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    
+    const data = await res.json()
+    
+    if (!res.ok) {
+      errorMessage.value = data.error || 'Authentication failed'
+      isLoading.value = false
+      return
+    }
+
     if (authMode.value === 'signup') {
-      // Flow 1: Sign up successful. Transition back to login.
-      registeredName.value = name.value
       window.alert('Account successfully created! Please log in with your new credentials.')
       authMode.value = 'login'
-      password.value = '' // Clear password for security
+      password.value = ''
+      isLoading.value = false
     } else {
-      // Flow 2: Log in successful. Let them into the app.
-      emit('authenticated', { name: registeredName.value || 'Student' })
+      // Pass token and user data up to App.vue
+      emit('authenticated', { token: data.token, user: data.user })
     }
-  }, 1500)
+  } catch (err) {
+    errorMessage.value = 'Could not connect to the server. Is it running?'
+    isLoading.value = false
+  }
 }
 </script>
 
@@ -61,11 +90,24 @@ const handleAuth = () => {
       </div>
       
       <form v-if="!isLoading" @submit.prevent="handleAuth" class="auth-form">
-        <!-- Name field only for Sign Up -->
+        <!-- Error Message -->
+        <div v-if="errorMessage" class="error-msg text-center mb-2" style="color: #ef4444; font-weight: 600;">
+          {{ errorMessage }}
+        </div>
+
+        <!-- Name and Hostel fields only for Sign Up -->
         <transition name="slide-fade">
-          <div v-if="authMode === 'signup'" class="form-group">
-            <label>Full Name</label>
-            <input type="text" v-model="name" class="form-input" placeholder="John Doe" required>
+          <div v-if="authMode === 'signup'" class="form-group-wrapper">
+            <div class="form-group mb-3">
+              <label>Full Name</label>
+              <input type="text" v-model="name" class="form-input" placeholder="John Doe" required>
+            </div>
+            <div class="form-group">
+              <label>Hostel</label>
+              <select v-model="hostel" class="form-input" required>
+                <option v-for="h in hostels" :key="h" :value="h">{{ h }}</option>
+              </select>
+            </div>
           </div>
         </transition>
 

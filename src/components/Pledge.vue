@@ -4,14 +4,40 @@ import { onMounted, ref } from 'vue'
 const props = defineProps({
   userData: Object
 })
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'update-coins'])
 
 const showConfetti = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   setTimeout(() => {
     showConfetti.value = true
   }, 300)
+
+  // Submit pledge to backend
+  if (props.userData && props.userData.token) {
+    try {
+      const actionText = props.userData.defaultCommute !== 'walk' ? 'walking more often' : 'making eco-friendly choices';
+      const res = await fetch('http://localhost:3000/api/pledges', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${props.userData.token}`
+        },
+        body: JSON.stringify({
+          category: 'General',
+          action: actionText
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update local coins
+        emit('update-coins', data.newCoinTotal);
+        setTimeout(() => alert(`🎉 You earned ${data.coinsEarned} Eco-Coins for taking the Campus Pledge!`), 1000);
+      }
+    } catch (err) {
+      console.error("Failed to save pledge:", err);
+    }
+  }
 })
 </script>
 

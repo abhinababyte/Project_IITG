@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js'
 import { Doughnut, Bar } from 'vue-chartjs'
 
@@ -8,9 +8,10 @@ ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearS
 const props = defineProps({
   userData: Object
 })
-const emit = defineEmits(['restart', 'take-pledge'])
+const emit = defineEmits(['restart', 'take-pledge', 'update-coins'])
 
 const showShareCard = ref(false)
+const isSubmitting = ref(false)
 
 // Calculate emissions (Simplified logic for prototype)
 // All values in kg CO2e per day
@@ -39,6 +40,44 @@ const dietEmissions = computed(() => {
 
 const totalEmissions = computed(() => {
   return (commuteEmissions.value + energyEmissions.value + dietEmissions.value).toFixed(2)
+})
+
+// Automatically submit this audit to the backend when the dashboard loads
+onMounted(async () => {
+  if (!props.userData.token) return; // Prevent if not logged in
+  if (isSubmitting.value) return;
+  
+  isSubmitting.value = true;
+  
+  try {
+    const res = await fetch('http://localhost:3000/api/audits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${props.userData.token}`
+      },
+      body: JSON.stringify({
+        commuteMode: props.userData.commuteMode,
+        commuteDistance: props.userData.commuteDistance,
+        acHours: props.userData.acHours,
+        laptopHours: props.userData.laptopHours,
+        dietType: props.userData.dietType,
+        recycling: props.userData.recycling,
+        co2Saved: parseFloat((15 - totalEmissions.value).toFixed(2)) // Assume 15 is campus average
+      })
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      if (data.coinsEarned > 0) {
+        // Show a little alert that they earned coins!
+        setTimeout(() => alert(`🎉 You earned ${data.coinsEarned} Eco-Coins for your footprint today!`), 1000);
+      }
+      emit('update-coins', data.newCoinTotal);
+    }
+  } catch (err) {
+    console.error("Failed to submit audit:", err);
+  }
 })
 
 // Relatable Impact Math

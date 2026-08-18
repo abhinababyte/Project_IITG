@@ -15,14 +15,37 @@ import Pledge from './components/Pledge.vue'
 const currentTab = ref('home') // 'home', 'about', 'contact'
 const showNotifications = ref(false)
 const showProfileMenu = ref(false)
+const feedItems = ref([])
+
+// Fetch live campus activity feed
+const fetchFeed = async () => {
+  try {
+    const res = await fetch('http://localhost:3000/api/feed')
+    if (res.ok) {
+      feedItems.value = await res.json()
+    }
+  } catch (err) {
+    console.error("Failed to fetch feed:", err)
+  }
+}
+
+// Fetch once immediately, then poll every 30 seconds
+import { onMounted } from 'vue'
+onMounted(() => {
+  fetchFeed()
+  setInterval(fetchFeed, 30000)
+})
 
 // App flow states (only active when currentTab === 'home')
 const currentView = ref('landing') // 'landing', 'auth', 'baseline', 'wizard', 'dashboard', 'leaderboard', 'pledge'
 
 // Global state holding the user's answers and baseline
 const userData = reactive({
+  id: null,
+  token: '',
   name: '',
   hostel: '',
+  eco_coins: 0,
   defaultCommute: '',
   defaultDiet: '',
   
@@ -59,6 +82,11 @@ const restart = () => {
 
 const hasCompletedWizard = computed(() => {
   return currentView.value === 'dashboard' || currentView.value === 'leaderboard' || currentView.value === 'pledge'
+})
+
+const isLoggedIn = computed(() => {
+  // If we have a token or an ID, the user is authenticated.
+  return !!userData.token || !!userData.id || userData.name !== ''
 })
 
 // Helper to switch to home tab and reset to landing if logo clicked
@@ -112,9 +140,9 @@ const navigateTo = (tab) => {
     </div>
     
     <div class="header-right flex items-center gap-4">
-      <!-- Login / Sign In Button (Visible if not logged in on any page) -->
+      <!-- Login / Sign In Button (Visible if not logged in) -->
       <button 
-        v-if="!hasCompletedWizard && (currentTab !== 'home' || currentView === 'landing')" 
+        v-if="!isLoggedIn && currentView !== 'auth'" 
         class="btn btn-primary login-btn"
         @click="currentTab = 'home'; currentView = 'auth'"
       >
@@ -122,11 +150,11 @@ const navigateTo = (tab) => {
       </button>
       
       <!-- User Controls (Visible on all pages if logged in) -->
-      <div v-if="hasCompletedWizard" class="user-controls flex items-center gap-3 relative">
+      <div v-if="isLoggedIn" class="user-controls flex items-center gap-3 relative">
         
         <!-- Eco-Coins -->
         <div class="eco-coins card" title="Redeem these for campus rewards!">
-          🪙 <strong>450</strong>
+          🪙 <strong>{{ userData.eco_coins || 0 }}</strong>
         </div>
         
         <!-- Notifications Bell -->
@@ -137,18 +165,11 @@ const navigateTo = (tab) => {
           
           <transition name="slide-fade">
             <div v-if="showNotifications" class="notif-dropdown card glass-card">
-              <h4 class="mb-2" style="font-size: 0.9rem; color: #94a3b8;">Notifications</h4>
-              <div class="notif-item">
-                <span class="notif-icon">🏆</span>
-                <p><strong>Kameng Hostel</strong> just overtook your hostel on the leaderboard!</p>
-              </div>
-              <div class="notif-item">
-                <span class="notif-icon">📝</span>
-                <p>Reminder: Log your commute for today to earn +10 coins.</p>
-              </div>
-              <div class="notif-item">
-                <span class="notif-icon">🌿</span>
-                <p>You saved 2kg of CO₂ this week. Amazing job!</p>
+              <h4 class="mb-2" style="font-size: 0.9rem; color: #94a3b8;">Campus Activity</h4>
+              <div v-if="feedItems.length === 0" class="text-secondary text-sm">No new activity yet.</div>
+              <div v-for="item in feedItems.slice(0,5)" :key="item.id" class="notif-item">
+                <span class="notif-icon">{{ item.type === 'pledge' ? '🏅' : '🌱' }}</span>
+                <p>{{ item.message }}</p>
               </div>
             </div>
           </transition>
@@ -221,7 +242,13 @@ const navigateTo = (tab) => {
           <Auth 
             v-else-if="currentView === 'auth'"
             @authenticated="(data) => { 
-              if (data && data.name) userData.name = data.name; 
+              if (data && data.user) {
+                userData.id = data.user.id;
+                userData.name = data.user.name; 
+                userData.hostel = data.user.hostel;
+                userData.eco_coins = data.user.eco_coins;
+                userData.token = data.token;
+              }
               startBaseline(); 
             }"
           />
@@ -237,17 +264,20 @@ const navigateTo = (tab) => {
             @finish="showDashboard" 
           />
           <Dashboard 
-            v-else-if="currentView === 'dashboard'" 
-            :userData="userData" 
+            v-else-if="currentView === 'dashboard'"
+            :userData="userData"
             @restart="restart"
+            @update-coins="(coins) => userData.eco_coins = coins"
             @take-pledge="currentView = 'pledge'"
           />
           <Leaderboard 
             v-else-if="currentView === 'leaderboard'" 
+            :userData="userData"
           />
           <Pledge 
             v-else-if="currentView === 'pledge'"
             :userData="userData"
+            @update-coins="(coins) => userData.eco_coins = coins"
             @back="currentView = 'dashboard'"
           />
         </transition>
@@ -259,16 +289,16 @@ const navigateTo = (tab) => {
   <Footer @navigate="navigateTo" />
   
   <!-- Live Campus Pulse Ticker (Fixed at very bottom) -->
-  <div class="ticker-wrap">
+  <div class="ticker-wrap" v-if="feedItems.length > 0">
     <div class="ticker-move">
-      <div class="ticker-item">🔥 Kameng Hostel just pledged to save AC!</div>
-      <div class="ticker-item">🚲 142 students chose bicycles over cars this morning.</div>
-      <div class="ticker-item">📉 Campus emissions are down 2.4% today!</div>
-      <div class="ticker-item">🌱 Barak Hostel is on a 5-day streak!</div>
-      <div class="ticker-item">♻️ 80kg of plastic recycled in the last 24 hours.</div>
-      <div class="ticker-item">🔥 Kameng Hostel just pledged to save AC!</div>
-      <div class="ticker-item">🚲 142 students chose bicycles over cars this morning.</div>
-      <div class="ticker-item">📉 Campus emissions are down 2.4% today!</div>
+      <!-- Original items -->
+      <div class="ticker-item" v-for="item in feedItems" :key="item.id">
+        {{ item.message }}
+      </div>
+      <!-- Duplicate for infinite seamless scrolling -->
+      <div class="ticker-item" v-for="item in feedItems" :key="'dup-'+item.id">
+        {{ item.message }}
+      </div>
     </div>
   </div>
 </template>

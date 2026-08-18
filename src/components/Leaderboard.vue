@@ -1,15 +1,33 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, onMounted } from 'vue'
 
-const leaderboards = [
-  { rank: 1, name: 'Brahmaputra Hostel', score: 85, trend: 'up', streak: 12 },
-  { rank: 2, name: 'Kameng Hostel', score: 78, trend: 'up', streak: 8 },
-  { rank: 3, name: 'Barak Hostel', score: 72, trend: 'down', streak: 3 },
-  { rank: 4, name: 'Umiam Hostel', score: 65, trend: 'up', streak: 5 },
-  { rank: 5, name: 'Manas Hostel', score: 60, trend: 'down', streak: 1 }
-]
+const props = defineProps({
+  userData: Object
+})
 
-const userHostel = 'Kameng Hostel'
+const leaderboards = ref([])
+const isLoading = ref(true)
+
+onMounted(async () => {
+  try {
+    const res = await fetch('http://localhost:3000/api/leaderboard')
+    const data = await res.json()
+    
+    // Map the backend data to our UI format
+    leaderboards.value = data.map((item, index) => ({
+      rank: index + 1,
+      name: item.hostel,
+      score: Math.round(item.totalCO2Saved),
+      trend: 'up', // Hardcoded for now
+      streak: item.studentCount // We'll just show active students here instead of streak for now
+    }))
+    
+    isLoading.value = false
+  } catch (err) {
+    console.error("Failed to load leaderboard", err)
+    isLoading.value = false
+  }
+})
 </script>
 
 <template>
@@ -23,28 +41,29 @@ const userHostel = 'Kameng Hostel'
       <div class="list-header">
         <span>Rank</span>
         <span class="flex-1">Hostel Name</span>
-        <span>Eco-Score</span>
-        <span>Streak</span>
+        <span>CO₂ Saved</span>
+        <span>Students</span>
       </div>
       
-      <ul class="ranking-list">
+      <div v-if="isLoading" class="text-center mt-4">Loading real-time rankings...</div>
+      
+      <ul v-else class="ranking-list">
         <li 
           v-for="item in leaderboards" 
           :key="item.rank" 
           class="ranking-item"
-          :class="{ 'is-user': item.name === userHostel }"
+          :class="{ 'is-user': item.name === props.userData?.hostel }"
         >
           <div class="rank-badge" :class="`rank-${item.rank}`">{{ item.rank }}</div>
           <div class="hostel-info flex-1">
             <strong>{{ item.name }}</strong>
-            <span v-if="item.name === userHostel" class="you-badge">You</span>
+            <span v-if="item.name === props.userData?.hostel" class="you-badge">You</span>
           </div>
           <div class="score">
-            {{ item.score }}
-            <span class="trend" :class="item.trend">{{ item.trend === 'up' ? '▲' : '▼' }}</span>
+            {{ item.score }} kg
           </div>
           <div class="streak">
-            🔥 {{ item.streak }}
+            👤 {{ item.streak }}
           </div>
         </li>
       </ul>
